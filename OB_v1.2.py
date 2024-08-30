@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 # Google Sheets setup
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-credentials = ServiceAccountCredentials.from_json_keyfile_name('cedar-gift-432307-k2-e107b6f6c67e.json', scope)
+credentials = ServiceAccountCredentials.from_json_keyfile_name('key.json', scope)
 gc = gspread.authorize(credentials)
 
 # Load the latest dataset
