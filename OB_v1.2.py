@@ -6,13 +6,31 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 app = Flask(__name__)
 
+# Google Sheets setup
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+credentials = ServiceAccountCredentials.from_json_keyfile_name('cedar-gift-432307-k2-e107b6f6c67e.json', scope)
+gc = gspread.authorize(credentials)
+
+# Load the latest dataset
+latest_file_path = gc.open_by_key("1iGrx-5RSjDnqUSNlgiwxrjLSXeorjHkIhhlL9q2nSqA").worksheet("WorksheetName")  
+data_latest = latest_file_path.get_all_values()
+
+# Convert the data into a DataFrame
+df_latest = pd.DataFrame(data_latest[1:], columns=data_latest[0]) 
+
+# Load the old dataset
+old_file_path = gc.open_by_key("12RDXlHCzw4a6lvcnZjJUZlKlf1lAqf8M-eqEkSmTi5k").worksheet("WorksheetName")
+data_old = old_file_path.get_all_values()
+
+# Convert the old data into a DataFrame
+df_old = pd.DataFrame(data_old[1:], columns=data_old[0])
 
 # Load the current datasets
-latest_file_path = 'ExcelImportData (1).xlsx'
-old_file_path = 'FTDH JAN-JUL.xlsx'
+#latest_file_path = 'OB/FTDH-CURRENT.xlsx'
+#old_file_path = 'OB/FTDH JAN-JUL.xlsx'
 
-def load_dataset(file_path):
-    return pd.read_excel(file_path)
+#def load_dataset(file_path):
+#    return pd.read_excel(file_path)
 
 def filter_and_process_data(df):
     required_columns = ['Sender', 'Statuses', 'BenificiaryAccountNumber']
@@ -20,17 +38,34 @@ def filter_and_process_data(df):
         if col not in df.columns:
             raise ValueError(f"Column '{col}' is missing from the dataset.")
     
+    # Filter data based on specific criteria
+    df['Sender'] = df['Sender'].str.strip()
     df = df[df['Sender'] != 'SADAPAY']
     df = df[df['Statuses'] != 'Invalid']
     return df
 
-# Load both datasets
-df_latest = load_dataset(latest_file_path)
-df_old = load_dataset(old_file_path)
+# Filter both datasets
+df_latest_filtered = filter_and_process_data(df_latest)
+df_old_filtered = filter_and_process_data(df_old)
 
-# Filter the datasets
-df_latest = filter_and_process_data(df_latest)
-df_old = filter_and_process_data(df_old)
+
+# def filter_and_process_data(df):
+#     required_columns = ['Sender', 'Statuses', 'BenificiaryAccountNumber']
+#     for col in required_columns:
+#         if col not in df.columns:
+#             raise ValueError(f"Column '{col}' is missing from the dataset.")
+    
+#     df = df[df['Sender'] != 'SADAPAY']
+#     df = df[df['Statuses'] != 'Invalid']
+#     return df
+
+# # Load both datasets
+# df_latest = load_dataset(latest_file_path)
+# df_old = load_dataset(old_file_path)
+
+# # Filter the datasets
+# df_latest = filter_and_process_data(df_latest)
+# df_old = filter_and_process_data(df_old)
 
 # Normalize time function
 def normalize_time(time_str):
@@ -75,10 +110,12 @@ def generate_message(df, account_number):
         message = f"""Hey! :wave:<br>
         We received complaints from {bank} for the disputed transactions as following:<br>
         {transaction_details.strip()}<br>
-        In accordance with industry-wide practice, we have deactivated your account until further notice. In the meanwhile, it would be really helpful if you could please provide us the following details:<br>
+        In accordance with industry-wide practice, we have deactivated your account until further notice. In the meanwhile, it would be really helpful if you could please provide us the following details written on a paper:<br>
         * Reason of transaction<br>
         * Relationship with sender (if any)<br>
         * Any proof the user can provide that the transaction was genuine<br>
+        * A picture of your CNIC (both front and back)<br>
+        Also, we recommend reaching out to {bank} and asking them to unblock your account directly. Once they do and send us an email clearing your account, all Sadapay services will be restored.
         Thank you! :pray:"""
 
         messages.append(message)
@@ -92,8 +129,11 @@ home_page = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Account Data Lookup</title>
+    <title>OB Generator</title>
+    <div class="bottom-container">
     <h5 style="position: fixed; bottom: 10px; width: 100%; text-align: center; font-size: 0.75rem; color: #666;">Designed by RAWN for Compliance</h5>
+    <a href="https://www.buymeacoffee.com/rahmanawan99" target="_blank" class="support-button">Like this Project? Support me</a>
+    </div>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -141,12 +181,40 @@ home_page = '''
             max-width: 150px;
             margin-bottom: 20px;
         }
+        .support-button {
+            background-color: #FFDD00;
+            color: black;
+            padding: 8px 15px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            border-radius: 20px;
+            text-decoration: none;
+            box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.2); /* Optional: subtle shadow */
+
+        }
+
+        .support-button:hover {
+            background-color: #FFCC00;
+        }
+
+        .bottom-container {
+            position: fixed;
+            bottom: 10px;
+            width: 100%;
+            text-align: center;
+            font-size: 0.75rem;
+            color: #666;
+        }
+        body {
+            padding-bottom: 50px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <img src="static/SadaPay-Logo-Vector.svg-.png" alt="Logo" class="logo">
-        <h1>Account Data Lookup</h1>
+        <h1>OB Generator</h1>
         <form action="/" method="post">
             <input type="text" name="account_number" placeholder="Enter account number" required>
             <select name="database" required>
@@ -201,9 +269,9 @@ def home():
             selected_database = request.form.get('database')
 
             if selected_database == 'old':
-                result = generate_message(df_old, account_number)
+                result = generate_message(df_old_filtered, account_number)
             else:
-                result = generate_message(df_latest, account_number)
+                result = generate_message(df_latest_filtered, account_number)
     except Exception as e:
         error = f"Error: {str(e)}"
     return render_template_string(home_page, result=result, error=error)
@@ -241,6 +309,31 @@ internal_page = '''
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Internal Lookup and Macro Generator</title>
     <style>
+            .home-button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            border-radius: 8px;
+            text-decoration: none;
+            margin-top: 20px;
+        }
+
+        .home-button:hover {
+            background-color: #45a049;
+        }
+
+        /* Center the button on the page */
+        .center-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+        }
+
         body {
             font-family: Arial, sans-serif;
             display: flex;
@@ -287,6 +380,7 @@ internal_page = '''
 </head>
 <body>
     <div class="container">
+        <a href="/" class="home-button">Go Back to Home Page</a>
         <h1>Internal Layering Lookup and Macro Generator</h1>
             <h5 style="position: fixed; bottom: 10px; width: 100%; text-align: center; font-size: 0.75rem; color: #666;">Designed by RAWN</h5>
 
@@ -369,13 +463,14 @@ def internal():
 
 Hey!
 
-We received complaints for disputed transactions of PKR {amount} on {date} from {sender}.
+We received complaints for disputed transactions of PKR {amount} on {date} from {sender}.<br>
 
-In accordance with industry-wide practice, we have deactivated your account until further notice. In the meanwhile, it would be really helpful if you could please provide us the following details:
+In accordance with industry-wide practice, we have deactivated your account until further notice. In the meanwhile, it would be really helpful if you could please provide us the following details:<br>
 
-- Reason of transaction
-- Relationship with sender (if any)
-- Any proof you can provide that the transaction was genuine
+- Reason of transaction<br>
+- Relationship with sender (if any)<br>
+- Any proof you can provide that the transaction was genuine<br>
+- A picture of your CNIC (both front and back)<br>
 
 Thank you
 """
