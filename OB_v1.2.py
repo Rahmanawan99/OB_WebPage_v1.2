@@ -218,8 +218,8 @@ home_page = '''
         <form action="/" method="post">
             <input type="text" name="account_number" placeholder="Enter account number" required>
             <select name="database" required>
-                <option value="latest">Latest Database (Excel Import Data)</option>
-                <option value="old">Old Database (FTDH JAN-JUL)</option>
+                <option value="latest">Latest (Aug-Sep)</option>
+                <option value="old">Old (JAN-JUL)</option>
             </select>
             <input type="submit" value="Lookup">
         </form>
@@ -281,7 +281,7 @@ def home():
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 credentials = ServiceAccountCredentials.from_json_keyfile_name('cedar-gift-432307-k2-e107b6f6c67e.json', scope)
 gc = gspread.authorize(credentials)
-sheet = gc.open("FTDH LOGGED DISPUTES - STATUS BOARD").worksheet("Aug 2024")
+sheet = gc.open("FTDH LOGGED DISPUTES - STATUS BOARD").worksheet("Sep 2024")
 
 # Load headers and data
 headers = sheet.row_values(6)
@@ -429,9 +429,11 @@ def internal():
         if 'lookup_number' in request.form:
             try:
                 lookup_number = request.form.get('lookup_number')
-                column_b = df.iloc[:, 1]
-                column_c = df.iloc[:, 2]
-                column_n = df.iloc[:, 13]
+                column_DisputeID = df.iloc[:, 0]
+                column_SP_User = df.iloc[:, 1]
+                column_LayeringDetails = df.iloc[:, 13]
+                column_TrxDate = df.iloc[:, 2]
+
 
                 normalized_lookup_number = re.sub(r'\D', '', lookup_number)
                 df['Normalized_N'] = df.iloc[:, 13].apply(normalize)
@@ -441,14 +443,15 @@ def internal():
                 if not matching_rows.empty:
                     lookup_result = []
                     for index, row in matching_rows.iterrows():
-                        value_b = row[column_b.name]
-                        value_c = row[column_c.name]
-                        value_n = row[column_n.name]
+                        value_b = row[column_DisputeID.name]
+                        value_c = row[column_SP_User.name]
+                        value_n = row[column_LayeringDetails.name]
+                        value_d = row[column_TrxDate.name]
 
                         if pd.notna(value_b) or pd.notna(value_c) or pd.notna(value_n):
-                            lookup_result.append(f"Dispute ID: {value_b}, Original SP User: {value_c}, Layering details: {value_n}")
+                            lookup_result.append(f"Dispute ID: {value_b}, Original SP User: {value_c}, Trx Date: {value_d}, Layering details: {value_n}")
                 else:
-                    error = "No matching number found in Column N."
+                    error = "No Internal Layering details found, check PTS for date and stopped by"
             except Exception as e:
                 error = str(e)
 
