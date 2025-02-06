@@ -8,17 +8,17 @@ app = Flask(__name__)
 
 # Google Sheets setup
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-credentials = ServiceAccountCredentials.from_json_keyfile_name('key.json', scope)
+credentials = ServiceAccountCredentials.from_json_keyfile_name('key.json', scope) #make sure to replace key.json with the actual keyname in the root directory
 gc = gspread.authorize(credentials)
 
-# Load the latest dataset
-latest_file_path = gc.open_by_key("1iGrx-5RSjDnqUSNlgiwxrjLSXeorjHkIhhlL9q2nSqA").worksheet("WorksheetName")  
+# Load the latest dataset - no need to update this
+latest_file_path = gc.open_by_key("1iGrx-5RSjDnqUSNlgiwxrjLSXeorjHkIhhlL9q2nSqA").worksheet("WorksheetName")
 data_latest = latest_file_path.get_all_values()
 
 # Convert the data into a DataFrame
-df_latest = pd.DataFrame(data_latest[1:], columns=data_latest[0]) 
+df_latest = pd.DataFrame(data_latest[1:], columns=data_latest[0])
 
-# Load the old dataset
+# Load the old dataset - keep adding ftdh data here every month
 old_file_path = gc.open_by_key("12RDXlHCzw4a6lvcnZjJUZlKlf1lAqf8M-eqEkSmTi5k").worksheet("WorksheetName")
 data_old = old_file_path.get_all_values()
 
@@ -27,7 +27,7 @@ df_old = pd.DataFrame(data_old[1:], columns=data_old[0])
 
 # Load the current datasets
 #latest_file_path = 'OB/FTDH-CURRENT.xlsx'
-#old_file_path = 'OB/FTDH JAN-JUL.xlsx'
+#old_file_path = 'OB/FTDH JAN-.xlsx'
 
 #def load_dataset(file_path):
 #    return pd.read_excel(file_path)
@@ -37,7 +37,7 @@ def filter_and_process_data(df):
     for col in required_columns:
         if col not in df.columns:
             raise ValueError(f"Column '{col}' is missing from the dataset.")
-    
+
     # Filter data based on specific criteria
     df['Sender'] = df['Sender'].str.strip()
     df = df[df['Sender'] != 'SADAPAY']
@@ -54,7 +54,7 @@ df_old_filtered = filter_and_process_data(df_old)
 #     for col in required_columns:
 #         if col not in df.columns:
 #             raise ValueError(f"Column '{col}' is missing from the dataset.")
-    
+
 #     df = df[df['Sender'] != 'SADAPAY']
 #     df = df[df['Statuses'] != 'Invalid']
 #     return df
@@ -115,8 +115,7 @@ def generate_message(df, account_number):
         * Relationship with sender (if any)<br>
         * Any proof the user can provide that the transaction was genuine<br>
         * A picture of your CNIC (both front and back)<br>
-        Also, we recommend reaching out to {bank} and asking them to unblock your account directly. Once they do and send us an email clearing your account, all Sadapay services will be restored.
-        Thank you! :pray:"""
+        """
 
         messages.append(message)
 
@@ -215,17 +214,14 @@ home_page = '''
     <div class="container">
         <img src="static/SadaPay-Logo-Vector.svg-.png" alt="Logo" class="logo">
         <h1>OB Generator</h1>
+        <h3>This portal will print results from Jan'24 - Jan'25</h3>
         <form action="/" method="post">
             <input type="text" name="account_number" placeholder="Enter account number" required>
-            <select name="database" required>
-                <option value="latest">Latest (Aug-Sep)</option>
-                <option value="old">Old (JAN-JUL)</option>
-            </select>
             <input type="submit" value="Lookup">
         </form>
         <br>
         <a href="/internal">
-            <input type="button" value="Go to Internal Lookup" style="padding: 0.5rem 1rem; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
+            <input type="button" value="Go to Internal Lookup(Live)" style="padding: 0.5rem 1rem; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
         </a>
         {% if result is not none %}
             <div class="result" id="message">{{ result|safe }}</div>
@@ -266,12 +262,9 @@ def home():
     try:
         if request.method == 'POST':
             account_number = request.form.get('account_number')
-            selected_database = request.form.get('database')
 
-            if selected_database == 'old':
-                result = generate_message(df_old_filtered, account_number)
-            else:
-                result = generate_message(df_latest_filtered, account_number)
+            # Always use the old filtered dataset
+            result = generate_message(df_old_filtered, account_number)
     except Exception as e:
         error = f"Error: {str(e)}"
     return render_template_string(home_page, result=result, error=error)
@@ -281,7 +274,7 @@ def home():
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 credentials = ServiceAccountCredentials.from_json_keyfile_name('cedar-gift-432307-k2-e107b6f6c67e.json', scope)
 gc = gspread.authorize(credentials)
-sheet = gc.open("FTDH LOGGED DISPUTES - STATUS BOARD").worksheet("Sep 2024")
+sheet = gc.open("FTDH LOGGED DISPUTES - STATUS BOARD").worksheet("Feb 2025") #update the month here, this should match the sheet name from status board sheet
 
 # Load headers and data
 headers = sheet.row_values(6)
@@ -395,7 +388,7 @@ internal_page = '''
                 <p>{{ lookup_result|safe }}</p>
             </div>
         {% endif %}
-        
+
         <!-- Macro Generator Form -->
         <form action="/internal" method="post">
             <input type="text" name="sender" placeholder="Enter sender's number" required>
@@ -409,7 +402,7 @@ internal_page = '''
                 <p>{{ macro|safe }}</p>
             </div>
         {% endif %}
-        
+
         {% if error %}
             <div class="error">{{ error }}</div>
         {% endif %}
@@ -431,12 +424,15 @@ def internal():
                 lookup_number = request.form.get('lookup_number')
                 column_DisputeID = df.iloc[:, 0]
                 column_SP_User = df.iloc[:, 1]
-                column_LayeringDetails = df.iloc[:, 13]
-                column_TrxDate = df.iloc[:, 2]
+                column_LayeringDetails = df.iloc[:, 14]
+                column_TrxDate = df.iloc[:, 3]
+                #column_Amount = df.iloc[:, 4]
+
+
 
 
                 normalized_lookup_number = re.sub(r'\D', '', lookup_number)
-                df['Normalized_N'] = df.iloc[:, 13].apply(normalize)
+                df['Normalized_N'] = df.iloc[:, 14].apply(normalize)
 
                 matching_rows = df[df['Normalized_N'].str.contains(normalized_lookup_number, na=False)]
 
@@ -447,6 +443,7 @@ def internal():
                         value_c = row[column_SP_User.name]
                         value_n = row[column_LayeringDetails.name]
                         value_d = row[column_TrxDate.name]
+                        #amt = row[column_Amount.name]
 
                         if pd.notna(value_b) or pd.notna(value_c) or pd.notna(value_n):
                             lookup_result.append(f"Dispute ID: {value_b}, Original SP User: {value_c}, Trx Date: {value_d}, Layering details: {value_n}")
